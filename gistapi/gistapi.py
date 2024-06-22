@@ -10,6 +10,7 @@ providing a search across all public Gists for a given Github account.
 
 import requests
 from flask import Flask, jsonify, request
+import re
 
 
 app = Flask(__name__)
@@ -40,6 +41,12 @@ def gists_for_user(username: str):
     return response.json()
 
 
+def get_gist_by_id(gist_id: str):
+    gist_url = 'https://api.github.com/gists/{gist_id}'.format(gist_id=gist_id)
+    response = requests.get(gist_url)
+    return response.json()
+
+
 @app.route("/api/v1/search", methods=['POST'])
 def search():
     """Provides matches for a single pattern across a single users gists.
@@ -57,17 +64,22 @@ def search():
     username = post_data['username']
     pattern = post_data['pattern']
 
-    result = {}
+    result = {
+        "matches": [],
+        "username": username,
+        "pattern": pattern,
+        "status": 'success'
+    }
+
     gists = gists_for_user(username)
 
+    re_pattern = re.compile(pattern)
     for gist in gists:
-        # TODO: Fetch each gist and check for the pattern
-        pass
+        gist_obj = get_gist_by_id(gist["id"])
 
-    result['status'] = 'success'
-    result['username'] = username
-    result['pattern'] = pattern
-    result['matches'] = []
+        for filename, file_data in gist_obj["files"].items():
+            if re.search(re_pattern, file_data["content"]):
+                result["matches"].append(gist_obj)
 
     return jsonify(result)
 
