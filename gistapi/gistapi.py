@@ -59,27 +59,63 @@ def search():
         object contains the list of matches along with a 'status' key
         indicating any failure conditions.
     """
-    post_data = request.get_json()
-
-    username = post_data['username']
-    pattern = post_data['pattern']
 
     result = {
         "matches": [],
-        "username": username,
-        "pattern": pattern,
-        "status": 'success'
+        "status": "error"  # bad status until the very end
     }
 
-    gists = gists_for_user(username)
+    try:
+        post_data = request.get_json()
+    except Exception as e:
+        result["reason"] = e.__str__()
+        return jsonify(result), 400
 
-    re_pattern = re.compile(pattern)
-    for gist in gists:
-        gist_obj = get_gist_by_id(gist["id"])
+    try:
+        username = post_data['username']
+    except KeyError:
+        result["reason"] = "Missing 'username' key in JSON data"
+        return jsonify(result), 400
+    
+    try:
+        pattern = post_data['pattern']
+    except KeyError:
+        result["reason"] = "Missing 'pattern' key in JSON data"
+        return jsonify(result), 400
+    
+    result["username"] = username
+    result["pattern"] = pattern
 
-        for filename, file_data in gist_obj["files"].items():
-            if re.search(re_pattern, file_data["content"]):
-                result["matches"].append(gist_obj)
+    try:
+        gists = gists_for_user(username)
+    except Exception as e:
+        result["reason"] = e.__str__()
+        return jsonify(result), 400
+
+    if "status" in gists:
+        result["status"] = 'error'
+        result["reason"] = "User's gists not found (incorrent user name?)"
+        return jsonify(result), 404
+
+    try:
+        re_pattern = re.compile(pattern)
+    except re.error as e:
+        result["reason"] = "Error compiling regular expression: {e}".format(e=e)
+        return jsonify(result), 400
+
+    try:
+        for gist in gists:
+            gist_obj = get_gist_by_id(gist["id"])
+
+            for filename, file_data in gist_obj["files"].items():
+                if re.search(re_pattern, file_data["content"]):
+                    result["matches"].append(gist_obj)
+                    break
+
+        result["status"] = "success"  # good status only here
+    except Exception as e:
+        result["reason"] = e.__str__()
+        return jsonify(result), 400
 
     return jsonify(result)
 
